@@ -121,7 +121,7 @@ export default {
       });
     },
     check() {
-      if (this.score >= 50 || this.score <= -100) {
+      if (this.score >= 50 || this.score <= -50) {
         this.stopSpawning()
         this.$emit('finish', this.score)
       }
@@ -147,20 +147,15 @@ export default {
       if (index === -1) return
       const poppedBubble = this.activeBubbles[index]
 
-      let centerX, centerY
-      const bubbleElement = this.$refs.bubble[index]
-      if (bubbleElement) {
-        const rect = bubbleElement.$el.getBoundingClientRect()
-        centerX = rect.left + rect.width / 2
-        centerY = rect.top + rect.height / 2
-      }
-      bus.emit('explosion', {x: centerX, y: centerY, size: poppedBubble.size})
+      const { x: centerX, y: centerY } = this.getBubbleCenter(index)
 
       if (poppedBubble.size === 'big') {
         this.spawnSplits(poppedBubble.color, 3, 'medium', centerX, centerY)
       } else if (poppedBubble.size === 'medium') {
         this.spawnSplits(poppedBubble.color, 5, 'small', centerX, centerY)
       }
+
+      bus.emit('explosion', {x: centerX, y: centerY, size: poppedBubble.size})
       this.processScore(poppedBubble.color, poppedBubble.size)
       this.removeBubble(bubbleId)
       this.check()
@@ -208,6 +203,22 @@ export default {
       const index = this.activeBubbles.findIndex(b => b.id === bubbleId)
       if (index !== -1) {
         this.activeBubbles.splice(index, 1)
+      }
+    },
+    getBubbleCenter(index) {
+      const bubbleComponent = this.$refs.bubble[index]
+      const fieldElement = this.$el.querySelector('.bubble-game__field')
+
+      if (!bubbleComponent || !fieldElement) {
+        return { x: 0, y: 0 }
+      }
+
+      const rect = bubbleComponent.$el.getBoundingClientRect()
+      const fieldRect = fieldElement.getBoundingClientRect()
+
+      return {
+        x: (rect.left - fieldRect.left) + rect.width / 2,
+        y: (rect.top - fieldRect.top) + rect.height / 2
       }
     },
   },
