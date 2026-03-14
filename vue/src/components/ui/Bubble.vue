@@ -9,6 +9,8 @@
 </template>
 
 <script>
+import {bus} from "@/eventBus.js";
+
 export default {
   name: "Bubble",
   emits: ['expired'],
@@ -16,6 +18,8 @@ export default {
     return {
       isFlying: false,
       startTime: 0,
+      x: this.initialX,
+      y: this.initialY,
     }
   },
   props: {
@@ -28,7 +32,7 @@ export default {
       type: String,
     },
     size: {
-      default: 'default',
+      default: 'medium',
       type: String,
     },
     amplitude: {
@@ -39,6 +43,14 @@ export default {
       type: Number,
       default: 0
     },
+    initialX: {
+      type: Number,
+      default: 0
+    },
+    initialY: {
+      type: Number,
+      default: 0
+    },
   },
   methods: {
     startFlight() {
@@ -46,32 +58,62 @@ export default {
       this.startTime = performance.now()
       requestAnimationFrame((timestamp) => {
         this.animate(timestamp)
-      });
+      })
     },
     animate(currentTime) {
-      if (!this.isFlying || !this.$refs.bubble) return;
+      if (!this.isFlying || !this.$refs.bubble) return
 
-      const elapsedTime = (currentTime - this.startTime) / 1000;
-      const y = elapsedTime * 0.2 * 100;
-      const x = Math.sin(elapsedTime + this.offset) * this.amplitude;
+      const elapsedTime = (currentTime - this.startTime) * 0.002
+      this.y += 1.0
+      this.x += Math.sin(elapsedTime + this.offset) * this.amplitude * 0.02
 
-      this.$refs.bubble.style.transform = `translate(${x}px, ${y}px)`;
+      this.$refs.bubble.style.transform = `translate(${this.x}px, ${this.y}px)`
 
-      const fieldHeight = window.innerHeight;
-      const bubbleRect = this.$refs.bubble.getBoundingClientRect();
+      const bubbleRect = this.$refs.bubble.getBoundingClientRect()
 
-      if (bubbleRect.top < fieldHeight) {
-        requestAnimationFrame((timestamp) => this.animate(timestamp));
+      if (bubbleRect.top < window.innerHeight) {
+        requestAnimationFrame((timestamp) => this.animate(timestamp))
       } else {
-        this.isFlying = false;
-        this.$emit('expired', this.index);
+        this.isFlying = false
+        this.$emit('expired', this.index)
       }
-    }
+    },
+    push(explosionX, explosionY, sourceSize) {
+      const sizeDistances = {
+        big: {big: 1, medium: 1.5, small: 2},
+        medium: {big: 0.5, medium: 1, small: 1.5},
+        small: {big: 0.25, medium: 0.5, small: 1}
+      }
+      const sourceRadius = {big: 37.5, medium: 20, small: 12.5};
+      const baseRadius = sourceRadius[sourceSize];
+
+      const deltaX = this.x - explosionX
+      const deltaY = this.y - explosionY
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+
+      if (distance > 200 || distance === 0) return
+
+      const shift = baseRadius * sizeDistances[sourceSize][this.size]
+
+      const shiftX = (deltaX / distance) * shift
+      const shiftY = (deltaY / distance) * shift
+
+      this.x += shiftX
+      this.y += shiftY
+    },
+    handleExplosion({x, y, size}) {
+      this.push(x, y, size)
+    },
   },
   mounted() {
+    this.$refs.bubble.style.transform = `translate(${this.initialX}px, ${this.initialY}px)`
     this.$nextTick(() => {
       this.startFlight()
     })
+    bus.on('explosion', this.handleExplosion)
+  },
+  beforeUnmount() {
+    bus.off('explosion', this.handleExplosion)
   }
 }
 </script>
@@ -86,8 +128,8 @@ export default {
   height: 40px;
 
   &--small {
-    width: 20px;
-    height: 20px;
+    width: 25px;
+    height: 25px;
   }
 
   &--medium {
@@ -96,8 +138,8 @@ export default {
   }
 
   &--big {
-    width: 80px;
-    height: 80px;
+    width: 75px;
+    height: 75px;
   }
 
   &__highlight {

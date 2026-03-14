@@ -6,7 +6,9 @@
           <span class="header-panel__label">Score: {{ score }}</span>
           <div class="header-panel__selection-group">
             <span class="header-panel__label">Select: </span>
-            <div class="header-panel__color" :style="{ backgroundColor : this.colorMap[this.selectColor] || this.colorMap.default }"></div>
+            <div class="header-panel__color"
+                 :style="{ backgroundColor : colorMap[selectColor] || colorMap.default }">
+            </div>
           </div>
         </div>
       </div>
@@ -15,15 +17,20 @@
       </div>
     </header>
 
-    <main class="bubble-game__field" @click="(e) => handleFieldClick(e)">
+    <main class="bubble-game__field">
       <Bubble
           v-for="(b, index) in activeBubbles"
           :key="b.id"
+          ref="bubble"
           :index="index"
           :color="colorMap[b.color] || colorMap.default"
           :size="b.size"
-          :style="{ left: b.x + '%' }"
-          @expired="() => removeBubble()"
+          :initialX="b.initialX || 0"
+          :initialY="b.initialY || 0"
+          :amplitude="b.amplitude"
+          :offset="b.offset"
+          @mousedown.stop="() => handleBubblePop(b.id)"
+          @expired="() => handleExpiredBubble(b.id)"
       />
 
     </main>
@@ -32,10 +39,11 @@
 
 <script>
 import Bubble from "@/components/ui/Bubble.vue";
+import {bus} from '@/eventBus'
 
 export default {
   name: "BubbleGame",
-  components: { Bubble },
+  components: {Bubble},
   emits: ['finish'],
   props: {
     num: {
@@ -57,7 +65,7 @@ export default {
     fine: {
       default: 5,
       type: Number
-    }
+    },
   },
   data() {
     return {
@@ -70,7 +78,8 @@ export default {
         purple: '#7506dc',
         pink: '#ad39ba',
         default: '#7cafe3'
-      }
+      },
+      sizes: ['small', 'medium', 'big'],
     };
   },
   computed: {
@@ -99,18 +108,20 @@ export default {
     },
     addBubble() {
       const colors = Object.keys(this.colorMap);
+      const fieldWidth = window.innerWidth
+
       this.activeBubbles.push({
         id: Date.now() + Math.random(),
         color: colors[Math.floor(Math.random() * this.num)],
-        size: 'medium',
-        x: Math.random() * 90,
-        y: 0,
-        offset: Math.random() * 100,
-        amplitude: 20 + Math.random() * 50
+        size: this.sizes[Math.floor(Math.random() * this.sizes.length)],
+        amplitude: Math.floor(Math.random() * 50) + 20,
+        offset: Math.floor(Math.random() * 100),
+        initialX: Math.floor(Math.random() * (fieldWidth - 220)) + 100,
+        initialY: -75,
       });
     },
     check() {
-      if (this.score >= 50 || this.score <= -50) {
+      if (this.score >= 50 || this.score <= -100) {
         this.stopSpawning()
         this.$emit('finish', this.score)
       }
@@ -118,37 +129,87 @@ export default {
     restartGame() {
       this.initGame()
     },
-    processScore(bubbleColorName) {
+    processScore(bubbleColorName, bubbleSize) {
       if (bubbleColorName === this.selectColor) {
         this.score += this.points
-      }
-      else {
-        this.score -= this.fine
+      } else {
+        if (bubbleSize === 'big') {
+          this.score -= this.fine
+        } else if (bubbleSize === 'medium') {
+          this.score -= this.fine - 2
+        } else {
+          this.score -= this.fine - 4
+        }
       }
     },
-    handleFieldClick(event) {
-      const elements = document.elementsFromPoint(event.clientX, event.clientY);
-
-      const hitIndices = elements
-          .filter(el => el.classList.contains('bubble'))
-          .map(el => parseInt(el.getAttribute('data-index')))
-          .filter(val => !isNaN(val))
-          .sort((a, b) => b - a)
-
-      hitIndices.forEach(index => {
-        this.handleBubblePop(index)
-      })
-    },
-    handleBubblePop(index) {
+    handleBubblePop(bubbleId) {
+      const index = this.activeBubbles.findIndex(b => b.id === bubbleId)
+      if (index === -1) return
       const poppedBubble = this.activeBubbles[index]
-      if (!poppedBubble) return
-      this.processScore(poppedBubble.color)
-      this.removeBubble(index)
+
+      let centerX, centerY
+      const bubbleElement = this.$refs.bubble[index]
+      if (bubbleElement) {
+        const rect = bubbleElement.$el.getBoundingClientRect()
+        centerX = rect.left + rect.width / 2
+        centerY = rect.top + rect.height / 2
+      }
+      bus.emit('explosion', {x: centerX, y: centerY, size: poppedBubble.size})
+
+      if (poppedBubble.size === 'big') {
+        this.spawnSplits(poppedBubble.color, 3, 'medium', centerX, centerY)
+      } else if (poppedBubble.size === 'medium') {
+        this.spawnSplits(poppedBubble.color, 5, 'small', centerX, centerY)
+      }
+      this.processScore(poppedBubble.color, poppedBubble.size)
+      this.removeBubble(bubbleId)
       this.check()
     },
-    removeBubble(index) {
-      this.activeBubbles.splice(index, 1)
-    }
+    handleExpiredBubble(bubbleId) {
+      const index = this.activeBubbles.findIndex(b => b.id === bubbleId)
+      if (index === -1) return
+      const expiredBubble = this.activeBubbles[index]
+
+      if (expiredBubble.color === this.selectColor) {
+        if (expiredBubble.size === 'big') {
+          this.score -= this.fine + 5
+        } else if (expiredBubble.size === 'medium') {
+          this.score -= this.fine + 1
+        } else {
+          this.score -= this.fine - 2
+        }
+        this.check()
+      }
+      this.removeBubble(bubbleId)
+    },
+    spawnSplits(parentColor, count, newSize, currentX, currentY) {
+      const colors = Object.keys(this.colorMap)
+      const radius = 60
+
+      for (let i = 0; i < count; i++) {
+        const angle = (i * 2 * Math.PI) / count
+        const offsetX = Math.cos(angle) * radius
+        const offsetY = Math.sin(angle) * radius
+
+        const color = (i === 0) ? parentColor : colors[Math.floor(Math.random() * colors.length)]
+
+        this.activeBubbles.push({
+          id: Date.now() + Math.random(),
+          color: color,
+          size: newSize,
+          amplitude: 15,
+          offset: Math.random() * 100,
+          initialX: currentX + offsetX,
+          initialY: currentY + offsetY,
+        })
+      }
+    },
+    removeBubble(bubbleId) {
+      const index = this.activeBubbles.findIndex(b => b.id === bubbleId)
+      if (index !== -1) {
+        this.activeBubbles.splice(index, 1)
+      }
+    },
   },
   beforeUnmount() {
     this.stopSpawning()
