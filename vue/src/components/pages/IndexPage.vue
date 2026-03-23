@@ -6,7 +6,7 @@
 
     <BubbleGame
         v-else
-        :num="5"
+        :numberOfColors="5"
         :intensity="2"
         :points="5"
         :selectColor="'blue'"

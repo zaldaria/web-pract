@@ -2,18 +2,17 @@
   <div ref="bubble"
        class="bubble"
        :class="'bubble--' + size"
-       :data-index="index"
-       :style="{ '--bubble-color': color }">
+       :style="{ '--bubble-color': color }"
+       @mousedown.stop="() => handleMouseDown()">
     <div class="bubble__highlight"></div>
   </div>
 </template>
 
 <script>
-import {bus} from "@/eventBus.js";
 
 export default {
   name: "Bubble",
-  emits: ['expired'],
+  emits: ['expired', 'pop'],
   data() {
     return {
       isFlying: false,
@@ -23,9 +22,9 @@ export default {
     }
   },
   props: {
-    index: {
-      default: 0,
+    bubbleId: {
       type: Number,
+      required: true
     },
     color: {
       default: '#6ea6df',
@@ -53,6 +52,15 @@ export default {
     },
   },
   methods: {
+    handleMouseDown() {
+      this.$emit('pop', {
+        id: this.bubbleId,
+        x: this.x,
+        y: this.y,
+        size: this.size,
+        color: this.color
+      })
+    },
     startFlight() {
       this.isFlying = true
       this.startTime = performance.now()
@@ -63,7 +71,7 @@ export default {
     animate(currentTime) {
       if (!this.isFlying || !this.$refs.bubble) return
 
-      const elapsedTime = (currentTime - this.startTime) * 0.002
+      const elapsedTime = (currentTime - this.startTime) * 0.001
       this.y += 1.0
       this.x += Math.sin(elapsedTime + this.offset) * this.amplitude * 0.02
 
@@ -75,7 +83,7 @@ export default {
         requestAnimationFrame((timestamp) => this.animate(timestamp))
       } else {
         this.isFlying = false
-        this.$emit('expired', this.index)
+        this.$emit('expired', this.bubbleId)
       }
     },
     push(explosionX, explosionY, sourceSize) {
@@ -84,8 +92,8 @@ export default {
         medium: {big: 0.5, medium: 1, small: 1.5},
         small: {big: 0.25, medium: 0.5, small: 1}
       }
-      const sourceRadius = {big: 37.5, medium: 20, small: 12.5};
-      const baseRadius = sourceRadius[sourceSize];
+      const sourceRadius = {big: 37.5, medium: 20, small: 12.5}
+      const baseRadius = sourceRadius[sourceSize]
 
       const deltaX = this.x - explosionX
       const deltaY = this.y - explosionY
@@ -101,20 +109,13 @@ export default {
       this.x += shiftX
       this.y += shiftY
     },
-    handleExplosion({x, y, size}) {
-      this.push(x, y, size)
-    },
   },
   mounted() {
     this.$refs.bubble.style.transform = `translate(${this.initialX}px, ${this.initialY}px)`
     this.$nextTick(() => {
       this.startFlight()
     })
-    bus.on('explosion', this.handleExplosion)
   },
-  beforeUnmount() {
-    bus.off('explosion', this.handleExplosion)
-  }
 }
 </script>
 
