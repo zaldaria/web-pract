@@ -1,42 +1,59 @@
 import { createStore } from 'vuex'
-import list from './list'
 
 const MUTATIONS = {
-  INCREMENT: 'INCREMENT',
-  SET_COUNT: 'SET_COUNT',
+  ADD_BUBBLE: 'ADD_BUBBLE',
+  REMOVE_BUBBLE: 'REMOVE_BUBBLE',
+  CLEAR_BUBBLES: 'CLEAR_BUBBLES',
+  UPDATE_SCORE: 'UPDATE_SCORE',
+  SET_SCORE: 'SET_SCORE',
 }
 
 export default createStore({
-  state () {
+  state() {
     return {
-      count: 0
+      bubbles: [],
+      score: 0
     }
   },
   getters: {
-    getCount: (state) => state.count,
-    getCount2: (state) => state.count * 2,
-    // getList: (state) => [4, 3]
+    getBubbles: (state) => state.bubbles,
+    getScore: (state) => state.score,
   },
   mutations: {
-    [MUTATIONS.INCREMENT]: (state, value) => {
-      state.count += value
+    [MUTATIONS.ADD_BUBBLE]: (state, bubble) => {
+      state.bubbles.push(bubble)
     },
-    [MUTATIONS.SET_COUNT]: (state, value) => {
-      state.count = value
+    [MUTATIONS.REMOVE_BUBBLE]: (state, id) => {
+      const index = state.bubbles.findIndex(b => b.bubbleId === id)
+      if (index !== -1) {
+        state.bubbles.splice(index, 1)
+      }
+    },
+    [MUTATIONS.CLEAR_BUBBLES]: (state) => {
+      state.bubbles = []
+    },
+    [MUTATIONS.UPDATE_SCORE]: (state, value) => {
+      state.score += value
+    },
+    [MUTATIONS.SET_SCORE]: (state, value) => {
+      state.score = value
     },
   },
   actions: {
-    runIncrement: (store, value) => {
-      store.commit(MUTATIONS.INCREMENT, value)
+    addBubble: (store, bubble) => {
+      store.commit(MUTATIONS.ADD_BUBBLE, bubble)
     },
-    setCount: (store, payload) => {
-      const { value, timeout = 0 } = payload
-      setTimeout(() => {
-        store.commit(MUTATIONS.SET_COUNT, value)
-      }, timeout)
+    removeBubble: (store, id) => {
+      store.commit(MUTATIONS.REMOVE_BUBBLE, id)
     },
-  },
-  modules: {
-    list
+    clearBubbles: (store) => {
+      store.commit(MUTATIONS.CLEAR_BUBBLES)
+    },
+    updateScore: (store, value) => {
+      store.commit(MUTATIONS.UPDATE_SCORE, value)
+    },
+    setScore: (store, value) => {
+      store.commit(MUTATIONS.SET_SCORE, value)
+    }
   }
 })
