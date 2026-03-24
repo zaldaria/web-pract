@@ -6,18 +6,24 @@ const MUTATIONS = {
   CLEAR_BUBBLES: 'CLEAR_BUBBLES',
   UPDATE_SCORE: 'UPDATE_SCORE',
   SET_SCORE: 'SET_SCORE',
+  SET_HIT_MULTIPLIER: 'SET_HIT_MULTIPLIER',
+  SET_MISS_MULTIPLIER: 'SET_MISS_MULTIPLIER',
 }
 
 export default createStore({
   state() {
     return {
       bubbles: [],
-      score: 0
+      score: 0,
+      hitMultiplier: 1.0,
+      missMultiplier: 1.0
     }
   },
   getters: {
     getBubbles: (state) => state.bubbles,
-    getScore: (state) => state.score,
+    getScore: (state) => Math.round(state.score),
+    getHitMultiplier: (state) => state.hitMultiplier,
+    getMissMultiplier: (state) => state.missMultiplier,
   },
   mutations: {
     [MUTATIONS.ADD_BUBBLE]: (state, bubble) => {
@@ -38,6 +44,12 @@ export default createStore({
     [MUTATIONS.SET_SCORE]: (state, value) => {
       state.score = value
     },
+    [MUTATIONS.SET_HIT_MULTIPLIER]: (state, value) => {
+      state.hitMultiplier = value
+    },
+    [MUTATIONS.SET_MISS_MULTIPLIER]: (state, value) => {
+      state.missMultiplier = value
+    },
   },
   actions: {
     addBubble: (store, bubble) => {
@@ -54,6 +66,43 @@ export default createStore({
     },
     setScore: (store, value) => {
       store.commit(MUTATIONS.SET_SCORE, value)
-    }
+    },
+    setMultipliers: (store) => {
+      store.commit(MUTATIONS.SET_MISS_MULTIPLIER, 1.0)
+      store.commit(MUTATIONS.SET_HIT_MULTIPLIER, 1.0)
+    },
+    processScore({ commit, state }, { isCorrect, size, basePoints, baseFine }) {
+      if (isCorrect) {
+        const earnedPoints = basePoints * state.hitMultiplier
+        commit('UPDATE_SCORE', earnedPoints)
+
+        const newHit = Math.min(5, state.hitMultiplier * 1.2)
+        commit('SET_HIT_MULTIPLIER', newHit)
+
+        commit('SET_MISS_MULTIPLIER', 1.0)
+
+        return { newMultiplier: newHit, type: 'hit' }
+
+      } else {
+        let penaltyBase = 0;
+        if (size === 'big') {
+          penaltyBase = baseFine;
+        } else if (size === 'medium') {
+          penaltyBase = baseFine - 2;
+        } else {
+          penaltyBase = baseFine - 4;
+        }
+
+        const lostPoints = penaltyBase * state.missMultiplier
+        commit('UPDATE_SCORE', -lostPoints)
+
+        const newMiss = Math.min(7, state.missMultiplier * 1.3)
+        commit('SET_MISS_MULTIPLIER', newMiss)
+
+        commit('SET_HIT_MULTIPLIER', 1.0)
+
+        return { newMultiplier: newMiss, type: 'miss' }
+      }
+    },
   }
 })

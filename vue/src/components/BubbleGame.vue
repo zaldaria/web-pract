@@ -4,12 +4,19 @@
       <div>
         <div class="header-panel__score">
           <span class="header-panel__label">Score: {{ score }}</span>
+
           <div class="header-panel__selection-group">
             <span class="header-panel__label">Select: </span>
             <div class="header-panel__color"
                  :style="{ backgroundColor : colorMap[selectColor] || colorMap.default }">
             </div>
           </div>
+
+          <div class="header-panel__multipliers">
+            <span class="header-panel__multipliers--hit">Hit: x{{ hitMultiplier.toFixed(1) }}</span>
+            <span class="header-panel__multipliers--miss">Miss: x{{ missMultiplier.toFixed(1) }}</span>
+          </div>
+
         </div>
       </div>
       <div>
@@ -32,6 +39,14 @@
           @pop="(data) => handleBubblePop(data)"
           @expired="(id) => handleExpiredBubble(id)"
       />
+
+      <div v-for="text in scoreCoefficients"
+           :key="text.id"
+           class="coefficients-text"
+           :class="'coefficients-text--' + text.type"
+           :style="{ left: text.x + 'px', top: text.y + 'px' }">
+        x{{ text.value.toFixed(1) }}
+      </div>
 
     </main>
   </div>
@@ -77,6 +92,7 @@ export default {
         default: '#7cafe3'
       },
       sizes: ['small', 'medium', 'big'],
+      scoreCoefficients: []
     };
   },
   computed: {
@@ -88,11 +104,18 @@ export default {
     },
     interval() {
       return 1000 / this.intensity
-    }
+    },
+    hitMultiplier() {
+      return this.$store.getters.getHitMultiplier || 1
+    },
+    missMultiplier() {
+      return this.$store.getters.getMissMultiplier || 1
+    },
   },
   methods: {
     initGame() {
       this.stopSpawning()
+      this.$store.dispatch('setMultipliers')
       this.$store.dispatch('setScore', 0)
       this.$store.dispatch('clearBubbles')
       this.addBubble()
@@ -126,7 +149,7 @@ export default {
       this.$store.dispatch('addBubble', newBubble)
     },
     checkScore() {
-      if (this.score >= 50 || this.score <= -50) {
+      if (this.score >= 100 || this.score <= -100) {
         this.stopSpawning()
         this.$emit('finish', this.score)
       }
@@ -134,25 +157,22 @@ export default {
     restartGame() {
       this.initGame()
     },
-    processScore(bubbleColor, bubbleSize) {
-      let pointsToAdd = 0
-
-      if (bubbleColor === this.colorMap[this.selectColor]) {
-        pointsToAdd = this.points
-      } else {
-        if (bubbleSize === 'big') {
-          pointsToAdd = -this.fine
-        } else if (bubbleSize === 'medium') {
-          pointsToAdd = -(this.fine - 2)
-        } else {
-          pointsToAdd = -(this.fine - 4)
-        }
-      }
-
-      this.$store.dispatch('updateScore', pointsToAdd)
-    },
     handleBubblePop(data) {
       const { id, x, y, size, color } = data
+
+      const targetColor = this.colorMap[this.selectColor] || this.colorMap.default;
+      const isCorrect = color === targetColor;
+
+      const scorePayload = {
+        isCorrect: isCorrect,
+        size: size,
+        basePoints: this.points,
+        baseFine: this.fine
+      };
+
+      this.$store.dispatch('processScore', scorePayload).then((result) =>{
+        this.showCoefficientsText(x, y, result.newMultiplier, result.type)
+      })
 
       if (size === 'big') {
         this.spawnSplits(color, 3, 'medium', x, y)
@@ -167,9 +187,15 @@ export default {
           }
         })
       }
-      this.processScore(color, size)
       this.$store.dispatch('removeBubble', id)
       this.checkScore()
+    },
+    showCoefficientsText(x, y, value, type) {
+      const id = Date.now() + Math.random()
+      this.scoreCoefficients.push({ id, x, y, value, type })
+      setTimeout(() => {
+        this.scoreCoefficients = this.scoreCoefficients.filter(t => t.id !== id)
+      }, 1000)
     },
     handleExpiredBubble(bubbleId) {
       const id = this.activeBubbles.findIndex(b => b.bubbleId === bubbleId)
@@ -254,12 +280,12 @@ export default {
   padding: 10px;
   background-color: #f8f9fa;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  font-size: 20px;
 
   &__score {
     display: flex;
     align-items: center;
     gap: 20px;
-    font-size: 20px;
     color: #0879ea;
   }
 
@@ -269,6 +295,34 @@ export default {
     border-radius: 50%;
     width: 20px;
     height: 20px;
+  }
+
+  &__multipliers {
+    display: flex;
+    gap: 15px;
+    margin-left: 20px;
+
+    &--hit {
+      color: #4caf50;
+    }
+    &--miss {
+      color: #f44336;
+    }
+  }
+}
+
+.coefficients-text {
+  position: absolute;
+  font-size: 20px;
+  pointer-events: none;
+  z-index: 100;
+
+  &--hit {
+    color: #4caf50;
+  }
+
+  &--miss {
+    color: #f44336;
   }
 }
 </style>
