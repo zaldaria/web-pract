@@ -8,6 +8,10 @@ const MUTATIONS = {
   SET_SCORE: 'SET_SCORE',
   SET_HIT_MULTIPLIER: 'SET_HIT_MULTIPLIER',
   SET_MISS_MULTIPLIER: 'SET_MISS_MULTIPLIER',
+  ADD_BOMB: 'ADD_BOMB',
+  USE_BOMB: 'USE_BOMB',
+  INCREMENT_HIT_STREAK: 'INCREMENT_HIT_STREAK',
+  RESET_HIT_STREAK: 'RESET_HIT_STREAK',
 }
 
 export default createStore({
@@ -16,7 +20,9 @@ export default createStore({
       bubbles: [],
       score: 0,
       hitMultiplier: 1.0,
-      missMultiplier: 1.0
+      missMultiplier: 1.0,
+      bombs: 0,
+      hitStreak: 0
     }
   },
   getters: {
@@ -50,6 +56,22 @@ export default createStore({
     [MUTATIONS.SET_MISS_MULTIPLIER]: (state, value) => {
       state.missMultiplier = value
     },
+    [MUTATIONS.ADD_BOMB]: (state) => {
+      state.bombs++
+    },
+    [MUTATIONS.USE_BOMB]: (state) => {
+      if (state.bombs > 0) state.bombs--
+    },
+    [MUTATIONS.INCREMENT_HIT_STREAK]: (state) => {
+      state.hitStreak++
+      if (state.hitStreak >= 10) {
+        state.bombs++
+        state.hitStreak = 0
+      }
+    },
+    [MUTATIONS.RESET_HIT_STREAK]: (state) => {
+      state.hitStreak = 0
+    }
   },
   actions: {
     addBubble: (store, bubble) => {
@@ -73,6 +95,8 @@ export default createStore({
     },
     processScore({ commit, state }, { isCorrect, size, basePoints, baseFine }) {
       if (isCorrect) {
+        commit('INCREMENT_HIT_STREAK')
+
         const earnedPoints = basePoints * state.hitMultiplier
         commit('UPDATE_SCORE', earnedPoints)
 
@@ -84,13 +108,16 @@ export default createStore({
         return { newMultiplier: newHit, type: 'hit' }
 
       } else {
-        let penaltyBase = 0;
+        commit('RESET_HIT_STREAK')
+
+        let penaltyBase = 0
+
         if (size === 'big') {
-          penaltyBase = baseFine;
+          penaltyBase = baseFine
         } else if (size === 'medium') {
-          penaltyBase = baseFine - 2;
+          penaltyBase = baseFine - 2
         } else {
-          penaltyBase = baseFine - 4;
+          penaltyBase = baseFine - 4
         }
 
         const lostPoints = penaltyBase * state.missMultiplier

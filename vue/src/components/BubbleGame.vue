@@ -3,10 +3,10 @@
     <header class="bubble-game__header header-panel">
       <div>
         <div class="header-panel__score">
-          <span class="header-panel__label">Score: {{ score }}</span>
+          <span>Score: {{ score }}</span>
 
           <div class="header-panel__selection-group">
-            <span class="header-panel__label">Select: </span>
+            <span>Select: </span>
             <div class="header-panel__color"
                  :style="{ backgroundColor : colorMap[selectColor] || colorMap.default }">
             </div>
@@ -17,6 +17,17 @@
             <span class="header-panel__multipliers--miss">Miss: x{{ missMultiplier.toFixed(1) }}</span>
           </div>
 
+          <div class="header-panel__bombs">
+            <span>Bombs: {{ bombsCount }} ({{ hitStreak }}/10)</span>
+            <button
+                class="header-panel__bomb-btn"
+                :class="{'header-panel__bomb-btn--active': isBombMode }"
+                @click="toggleBombMode"
+                :disabled="bombsCount === 0">
+              Use Bomb
+            </button>
+          </div>
+
         </div>
       </div>
       <div>
@@ -24,7 +35,8 @@
       </div>
     </header>
 
-    <main class="bubble-game__field">
+    <main class="bubble-game__field"
+          @mousedown="(e) => handleFieldClick(e)">
       <Bubble
           v-for="b in activeBubbles"
           :key="b.bubbleId"
@@ -92,7 +104,8 @@ export default {
         default: '#7cafe3'
       },
       sizes: ['small', 'medium', 'big'],
-      scoreCoefficients: []
+      scoreCoefficients: [],
+      isBombMode: false,
     };
   },
   computed: {
@@ -111,6 +124,12 @@ export default {
     missMultiplier() {
       return this.$store.getters.getMissMultiplier || 1
     },
+    bombsCount() {
+      return this.$store.state.bombs
+    },
+    hitStreak() {
+      return this.$store.state.hitStreak
+    }
   },
   methods: {
     initGame() {
@@ -149,7 +168,7 @@ export default {
       this.$store.dispatch('addBubble', newBubble)
     },
     checkScore() {
-      if (this.score >= 100 || this.score <= -100) {
+      if (this.score >= 1000 || this.score <= -1000) {
         this.stopSpawning()
         this.$emit('finish', this.score)
       }
@@ -160,8 +179,8 @@ export default {
     handleBubblePop(data) {
       const { id, x, y, size, color } = data
 
-      const targetColor = this.colorMap[this.selectColor] || this.colorMap.default;
-      const isCorrect = color === targetColor;
+      const targetColor = this.colorMap[this.selectColor] || this.colorMap.default
+      const isCorrect = color === targetColor
 
       const scorePayload = {
         isCorrect: isCorrect,
@@ -174,10 +193,12 @@ export default {
         this.showCoefficientsText(x, y, result.newMultiplier, result.type)
       })
 
+      const parentColorKey = Object.keys(this.colorMap).find(key => this.colorMap[key] === data.color)
+
       if (size === 'big') {
-        this.spawnSplits(color, 3, 'medium', x, y)
+        this.spawnSplits(parentColorKey, 3, 'medium', x, y)
       } else if (size === 'medium') {
-        this.spawnSplits(color, 5, 'small', x, y)
+        this.spawnSplits(parentColorKey, 5, 'small', x, y)
       }
 
       if (this.$refs.bubble) {
@@ -225,11 +246,11 @@ export default {
         const offsetX = Math.cos(angle) * radius
         const offsetY = Math.sin(angle) * radius
 
-        const color = (i === 0) ? this.colorMap[parentColor] : colors[Math.floor(Math.random() * colors.length)]
+        const colorKey = (i === 0) ? parentColor : colors[Math.floor(Math.random() * colors.length)]
 
         const newBubble = {
           bubbleId: Date.now() + Math.random(),
-          color: color,
+          color: colorKey,
           size: newSize,
           amplitude: 15,
           offset: Math.random() * 100,
@@ -239,6 +260,47 @@ export default {
 
         this.$store.dispatch('addBubble', newBubble)
       }
+    },
+    toggleBombMode() {
+      if (this.bombsCount > 0) {
+        this.isBombMode = !this.isBombMode
+      }
+    },
+    handleFieldClick(event) {
+      if (!this.isBombMode || this.bombsCount <= 0) return
+
+      const field = this.$el.querySelector('.bubble-game__field')
+      const rect = field.getBoundingClientRect()
+      const clickX = event.clientX - rect.left
+      const clickY = event.clientY - rect.top
+
+      this.triggerExplosion(clickX, clickY)
+
+      this.$store.commit('USE_BOMB')
+      this.isBombMode = false
+    },
+    triggerExplosion(x, y) {
+      const currentBubbles = [...this.$store.getters.getBubbles]
+
+      currentBubbles.forEach(b => {
+        const bubbleComponent = this.$refs.bubble?.find(cmp => cmp.bubbleId === b.bubbleId)
+        if (!bubbleComponent) return
+
+        const currentX = bubbleComponent.x
+        const currentY = bubbleComponent.y
+
+        const dx = currentX - x
+        const dy = currentY - y
+        const distance = Math.sqrt(dx * dx + dy * dy)
+
+        if (distance <= 150) {
+          this.$store.commit('REMOVE_BUBBLE', b.bubbleId)
+
+          if (b.size === 'big') {
+            this.spawnSplits(b.color, 7, 'small', currentX, currentY)
+          }
+        }
+      });
     },
   },
   beforeUnmount() {
@@ -277,7 +339,7 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px;
+  padding: 10px 20px;
   background-color: #f8f9fa;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   font-size: 20px;
@@ -285,13 +347,18 @@ export default {
   &__score {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 30px;
     color: #0879ea;
+  }
+
+  &__group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
 
   &__color {
     display: inline-block;
-    vertical-align: middle;
     border-radius: 50%;
     width: 20px;
     height: 20px;
@@ -300,13 +367,39 @@ export default {
   &__multipliers {
     display: flex;
     gap: 15px;
-    margin-left: 20px;
 
     &--hit {
       color: #4caf50;
     }
+
     &--miss {
       color: #f44336;
+    }
+  }
+
+  &__bombs {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #000000;
+  }
+
+  &__bomb-btn {
+    padding: 4px 12px;
+    border: 1px solid #000000;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+    cursor: pointer;
+    font-size: 20px;
+
+    &:disabled {
+      cursor: not-allowed;
+      border-color: #a5a5a5;
+      color: #a5a5a5;
+    }
+
+    &--active {
+      outline: 3px solid #f44336;
     }
   }
 }
@@ -325,4 +418,5 @@ export default {
     color: #f44336;
   }
 }
+
 </style>
