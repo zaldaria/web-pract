@@ -20,16 +20,30 @@
           <div class="header-panel__bombs">
             <span>Bombs: {{ bombsCount }} ({{ hitStreak }}/10)</span>
             <button
-                class="header-panel__bomb-btn"
-                :class="{'header-panel__bomb-btn--active': isBombMode }"
-                @click="toggleBombMode"
+                class="header-panel__btn"
+                :class="{'header-panel__btn--active': isBombMode }"
+                @click="() => toggleBombMode()"
                 :disabled="bombsCount === 0">
               Use Bomb
             </button>
           </div>
 
+          <button
+              class="header-panel__btn"
+              :class="{'header-panel__btn--active': isLaserMode }"
+              @click="() => toggleLaserMode()">
+            Laser
+          </button>
+
+          <button
+              class="header-panel__btn"
+              :class="{'header-panel__btn--active': isAutoMode }"
+              @click="() => toggleAutoMode()">
+            Auto
+          </button>
         </div>
       </div>
+
       <div>
         <button class="c-button" @click="() => restartGame()">Restart</button>
       </div>
@@ -37,6 +51,7 @@
 
     <main class="bubble-game__field"
           @mousedown="(e) => handleFieldClick(e)">
+
       <Bubble
           v-for="b in activeBubbles"
           :key="b.bubbleId"
@@ -48,9 +63,16 @@
           :initialY="b.initialY || 0"
           :amplitude="b.amplitude"
           :offset="b.offset"
+          :isLaserMode="isLaserMode"
           @pop="(data) => handleBubblePop(data)"
           @expired="(id) => handleExpiredBubble(id)"
       />
+
+      <div v-for="shot in shots"
+           :key="shot.id"
+           class="auto-shot"
+           :style="{ left: shot.x + 'px', top: shot.y + 'px' }">
+      </div>
 
       <div v-for="text in scoreCoefficients"
            :key="text.id"
@@ -106,6 +128,12 @@ export default {
       sizes: ['small', 'medium', 'big'],
       scoreCoefficients: [],
       isBombMode: false,
+      isLaserMode: false,
+      isAutoMode: false,
+      //mouseX: 0,
+      //mouseY: 0,
+      shots: [],
+      //autoShootInterval: null,
     };
   },
   computed: {
@@ -177,7 +205,7 @@ export default {
       this.initGame()
     },
     handleBubblePop(data) {
-      const { id, x, y, size, color } = data
+      const {id, x, y, size, color} = data
 
       const targetColor = this.colorMap[this.selectColor] || this.colorMap.default
       const isCorrect = color === targetColor
@@ -187,9 +215,9 @@ export default {
         size: size,
         basePoints: this.points,
         baseFine: this.fine
-      };
+      }
 
-      this.$store.dispatch('processScore', scorePayload).then((result) =>{
+      this.$store.dispatch('processScore', scorePayload).then((result) => {
         this.showCoefficientsText(x, y, result.newMultiplier, result.type)
       })
 
@@ -213,7 +241,7 @@ export default {
     },
     showCoefficientsText(x, y, value, type) {
       const id = Date.now() + Math.random()
-      this.scoreCoefficients.push({ id, x, y, value, type })
+      this.scoreCoefficients.push({id, x, y, value, type})
       setTimeout(() => {
         this.scoreCoefficients = this.scoreCoefficients.filter(t => t.id !== id)
       }, 1000)
@@ -261,20 +289,24 @@ export default {
         this.$store.dispatch('addBubble', newBubble)
       }
     },
-    toggleBombMode() {
-      if (this.bombsCount > 0) {
-        this.isBombMode = !this.isBombMode
-      }
-    },
     handleFieldClick(event) {
-      if (!this.isBombMode || this.bombsCount <= 0) return
+      if (!this.isBombMode && !this.isAutoMode) return
 
       const field = this.$el.querySelector('.bubble-game__field')
       const rect = field.getBoundingClientRect()
       const clickX = event.clientX - rect.left
       const clickY = event.clientY - rect.top
 
-      this.triggerExplosion(clickX, clickY)
+      if (this.isBombMode) {
+        if (this.bombsCount > 0) {
+          this.triggerExplosion(clickX, clickY)
+          this.$store.commit('USE_BOMB')
+        }
+        this.isBombMode = false
+      }
+      else if (this.isAutoMode) {
+        this.placeAutoBullet(clickX, clickY)
+      }
 
       this.$store.commit('USE_BOMB')
       this.isBombMode = false
@@ -293,14 +325,68 @@ export default {
         const dy = currentY - y
         const distance = Math.sqrt(dx * dx + dy * dy)
 
-        if (distance <= 150) {
+        if (distance <= 250) {
           this.$store.commit('REMOVE_BUBBLE', b.bubbleId)
 
           if (b.size === 'big') {
             this.spawnSplits(b.color, 7, 'small', currentX, currentY)
           }
         }
-      });
+      })
+    },
+    resetAllModes() {
+      this.isBombMode = false
+      this.isLaserMode = false
+      this.isAutoMode = false
+    },
+    toggleBombMode() {
+      const wasActive = this.isBombMode
+      this.resetAllModes()
+      this.isBombMode = !wasActive
+    },
+    toggleLaserMode() {
+      const wasActive = this.isLaserMode
+      this.resetAllModes()
+      this.isLaserMode = !wasActive
+    },
+    toggleAutoMode() {
+      const wasActive = this.isAutoMode
+      this.resetAllModes()
+      this.isAutoMode = !wasActive
+    },
+    placeAutoBullet(x, y) {
+      const shotId = Date.now()
+      this.shots.push({ id: shotId, x, y })
+
+      let shotsFired = 0
+
+      const turretInterval = setInterval(() => {
+        this.fire(x, y)
+        shotsFired++
+
+        if (shotsFired >= 4) {
+          clearInterval(turretInterval)
+          this.shots = this.shots.filter(s => s.id !== shotId)
+        }
+      }, 500)
+    },
+    fire(x, y) {
+      const target = this.$refs.bubble?.find(cmp => {
+        const radius = cmp.size === 'big' ? 37.5 : cmp.size === 'medium' ? 20 : 12.5
+
+        const centerX = cmp.x + radius
+        const centerY = cmp.y + radius
+
+        const dx = centerX - x
+        const dy = centerY - y
+        const distance = Math.sqrt(dx * dx + dy * dy)
+
+        return distance <= radius
+      })
+
+      if (target) {
+        target.handleMouseDown()
+      }
     },
   },
   beforeUnmount() {
@@ -384,9 +470,10 @@ export default {
     color: #000000;
   }
 
-  &__bomb-btn {
+  &__btn {
     padding: 4px 12px;
-    border: 1px solid #000000;
+    border: 1px solid #0879ea;
+    color: #0879ea;
     border-radius: 6px;
     background-color: #f8f9fa;
     cursor: pointer;
@@ -399,7 +486,7 @@ export default {
     }
 
     &--active {
-      outline: 3px solid #f44336;
+      box-shadow: 0 0 8px #f44336;
     }
   }
 }
@@ -416,6 +503,38 @@ export default {
 
   &--miss {
     color: #f44336;
+  }
+}
+
+.auto-shot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background-color: #ff9800;
+  border: 1px solid #e65100;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 50;
+
+  transform: translate(-50%, -50%);
+  animation: pulseShot 0.5s infinite;
+}
+
+@keyframes pulseShot {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+    box-shadow: 0 0 10px #ff9800;
+  }
+  50% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+    box-shadow: none;
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+    box-shadow: 0 0 10px #ff9800;
   }
 }
 
