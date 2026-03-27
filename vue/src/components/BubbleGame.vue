@@ -130,10 +130,7 @@ export default {
       isBombMode: false,
       isLaserMode: false,
       isAutoMode: false,
-      //mouseX: 0,
-      //mouseY: 0,
       shots: [],
-      //autoShootInterval: null,
     };
   },
   computed: {
@@ -147,10 +144,10 @@ export default {
       return 1000 / this.intensity
     },
     hitMultiplier() {
-      return this.$store.getters.getHitMultiplier || 1
+      return this.$store.getters.getHitMultiplier
     },
     missMultiplier() {
-      return this.$store.getters.getMissMultiplier || 1
+      return this.$store.getters.getMissMultiplier
     },
     bombsCount() {
       return this.$store.state.bombs
