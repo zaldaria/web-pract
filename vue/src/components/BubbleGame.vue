@@ -88,6 +88,7 @@
 
 <script>
 import Bubble from "@/components/ui/Bubble.vue"
+import {mapActions, mapGetters} from "vuex"
 
 export default {
   name: "BubbleGame",
@@ -134,40 +135,58 @@ export default {
     };
   },
   computed: {
+    ...mapGetters([
+        'getBubbles',
+        'getScore',
+        'getMissMultiplier',
+        'getHitMultiplier',
+        'getBombs',
+        'getHitStreak'
+    ]),
     activeBubbles() {
-      return this.$store.getters.getBubbles
+      return this.getBubbles
     },
     score() {
-      return this.$store.getters.getScore
+      return this.getScore
     },
     interval() {
       return 1000 / this.intensity
     },
     hitMultiplier() {
-      return this.$store.getters.getHitMultiplier
+      return this.getHitMultiplier
     },
     missMultiplier() {
-      return this.$store.getters.getMissMultiplier
+      return this.getMissMultiplier
     },
     bombsCount() {
-      return this.$store.state.bombs
+      return this.getBombs
     },
     hitStreak() {
-      return this.$store.state.hitStreak
+      return this.getHitStreak
     }
   },
   methods: {
+    ...mapActions([
+        'setMultipliers',
+        'addBubble',
+        'clearBubbles',
+        'removeBubble',
+        'setScore',
+        'updateScore',
+        'processScore',
+        'useBomb'
+    ]),
     initGame() {
       this.stopSpawning()
-      this.$store.dispatch('setMultipliers')
-      this.$store.dispatch('setScore', 0)
-      this.$store.dispatch('clearBubbles')
-      this.addBubble()
+      this.setMultipliers()
+      this.setScore(0)
+      this.clearBubbles()
+      this.spawnBubble()
       this.startSpawning()
     },
     startSpawning() {
       this.spawnTimer = setInterval(() => {
-        this.addBubble()
+        this.spawnBubble()
       }, this.interval)
     },
     stopSpawning() {
@@ -176,7 +195,7 @@ export default {
         this.spawnTimer = null
       }
     },
-    addBubble() {
+    spawnBubble() {
       const colors = Object.keys(this.colorMap)
       const fieldWidth = window.innerWidth
 
@@ -190,7 +209,7 @@ export default {
         initialY: -75,
       }
 
-      this.$store.dispatch('addBubble', newBubble)
+      this.addBubble(newBubble)
     },
     checkScore() {
       if (this.score >= 1000 || this.score <= -1000) {
@@ -214,7 +233,7 @@ export default {
         baseFine: this.fine
       }
 
-      this.$store.dispatch('processScore', scorePayload).then((result) => {
+      this.processScore(scorePayload).then(result => {
         this.showCoefficientsText(x, y, result.newMultiplier, result.type)
       })
 
@@ -233,7 +252,7 @@ export default {
           }
         })
       }
-      this.$store.dispatch('removeBubble', id)
+      this.removeBubble(id)
       this.checkScore()
     },
     showCoefficientsText(x, y, value, type) {
@@ -257,10 +276,10 @@ export default {
         } else {
           penalty = -(this.fine - 2)
         }
-        this.$store.dispatch('updateScore', penalty)
+        this.updateScore(penalty)
         this.checkScore()
       }
-      this.$store.dispatch('removeBubble', bubbleId)
+      this.removeBubble(bubbleId)
     },
     spawnSplits(parentColor, count, newSize, currentX, currentY) {
       const colors = Object.keys(this.colorMap)
@@ -283,7 +302,7 @@ export default {
           initialY: currentY + offsetY,
         }
 
-        this.$store.dispatch('addBubble', newBubble)
+        this.addBubble(newBubble)
       }
     },
     handleFieldClick(event) {
@@ -297,19 +316,16 @@ export default {
       if (this.isBombMode) {
         if (this.bombsCount > 0) {
           this.triggerExplosion(clickX, clickY)
-          this.$store.commit('USE_BOMB')
+          this.useBomb()
         }
         this.isBombMode = false
       }
       else if (this.isAutoMode) {
         this.placeAutoBullet(clickX, clickY)
       }
-
-      this.$store.commit('USE_BOMB')
-      this.isBombMode = false
     },
     triggerExplosion(x, y) {
-      const currentBubbles = [...this.$store.getters.getBubbles]
+      const currentBubbles = [...this.getBubbles]
 
       currentBubbles.forEach(b => {
         const bubbleComponent = this.$refs.bubble?.find(cmp => cmp.bubbleId === b.bubbleId)
@@ -323,7 +339,7 @@ export default {
         const distance = Math.sqrt(dx * dx + dy * dy)
 
         if (distance <= 250) {
-          this.$store.commit('REMOVE_BUBBLE', b.bubbleId)
+          this.removeBubble(b.bubbleId)
 
           if (b.size === 'big') {
             this.spawnSplits(b.color, 7, 'small', currentX, currentY)

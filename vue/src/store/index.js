@@ -30,6 +30,8 @@ export default createStore({
     getScore: (state) => Math.round(state.score),
     getHitMultiplier: (state) => state.hitMultiplier,
     getMissMultiplier: (state) => state.missMultiplier,
+    getBombs: (state)=> state.bombs,
+    getHitStreak: (state) => state.hitStreak
   },
   mutations: {
     [MUTATIONS.ADD_BUBBLE]: (state, bubble) => {
@@ -95,20 +97,20 @@ export default createStore({
     },
     processScore({ commit, state }, { isCorrect, size, basePoints, baseFine }) {
       if (isCorrect) {
-        commit('INCREMENT_HIT_STREAK')
+        commit(MUTATIONS.INCREMENT_HIT_STREAK)
 
         const earnedPoints = basePoints * state.hitMultiplier
-        commit('UPDATE_SCORE', earnedPoints)
+        commit(MUTATIONS.UPDATE_SCORE, earnedPoints)
 
         const newHit = Math.min(5, state.hitMultiplier * 1.2)
-        commit('SET_HIT_MULTIPLIER', newHit)
+        commit(MUTATIONS.SET_HIT_MULTIPLIER, newHit)
 
-        commit('SET_MISS_MULTIPLIER', 1.0)
+        commit(MUTATIONS.SET_MISS_MULTIPLIER, 1.0)
 
         return { newMultiplier: newHit, type: 'hit' }
 
       } else {
-        commit('RESET_HIT_STREAK')
+        commit(MUTATIONS.RESET_HIT_STREAK)
 
         let penaltyBase = 0
 
@@ -121,15 +123,18 @@ export default createStore({
         }
 
         const lostPoints = penaltyBase * state.missMultiplier
-        commit('UPDATE_SCORE', -lostPoints)
+        commit(MUTATIONS.UPDATE_SCORE, -lostPoints)
 
         const newMiss = Math.min(7, state.missMultiplier * 1.3)
-        commit('SET_MISS_MULTIPLIER', newMiss)
+        commit(MUTATIONS.SET_MISS_MULTIPLIER, newMiss)
 
-        commit('SET_HIT_MULTIPLIER', 1.0)
+        commit(MUTATIONS.SET_HIT_MULTIPLIER, 1.0)
 
         return { newMultiplier: newMiss, type: 'miss' }
       }
     },
+    useBomb(store) {
+      store.commit(MUTATIONS.USE_BOMB)
+    }
   }
 })
