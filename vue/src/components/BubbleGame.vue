@@ -3,21 +3,55 @@
     <header class="bubble-game__header header-panel">
       <div>
         <div class="header-panel__score">
-          <span class="header-panel__label">Score: {{ score }}</span>
+          <span>Score: {{ score }}</span>
+
           <div class="header-panel__selection-group">
-            <span class="header-panel__label">Select: </span>
+            <span>Select: </span>
             <div class="header-panel__color"
                  :style="{ backgroundColor : colorMap[selectColor] || colorMap.default }">
             </div>
           </div>
+
+          <div class="header-panel__multipliers">
+            <span class="header-panel__multipliers--hit">Hit: x{{ hitMultiplier.toFixed(1) }}</span>
+            <span class="header-panel__multipliers--miss">Miss: x{{ missMultiplier.toFixed(1) }}</span>
+          </div>
+
+          <div class="header-panel__bombs">
+            <span>Bombs: {{ bombsCount }} ({{ hitStreak }}/10)</span>
+            <button
+                class="header-panel__btn"
+                :class="{'header-panel__btn--active': isBombMode }"
+                @click="() => toggleBombMode()"
+                :disabled="bombsCount === 0">
+              Use Bomb
+            </button>
+          </div>
+
+          <button
+              class="header-panel__btn"
+              :class="{'header-panel__btn--active': isLaserMode }"
+              @click="() => toggleLaserMode()">
+            Laser
+          </button>
+
+          <button
+              class="header-panel__btn"
+              :class="{'header-panel__btn--active': isAutoMode }"
+              @click="() => toggleAutoMode()">
+            Auto
+          </button>
         </div>
       </div>
+
       <div>
         <button class="c-button" @click="() => restartGame()">Restart</button>
       </div>
     </header>
 
-    <main class="bubble-game__field">
+    <main class="bubble-game__field"
+          @mousedown="(e) => handleFieldClick(e)">
+
       <Bubble
           v-for="b in activeBubbles"
           :key="b.bubbleId"
@@ -29,9 +63,24 @@
           :initialY="b.initialY || 0"
           :amplitude="b.amplitude"
           :offset="b.offset"
+          :isLaserMode="isLaserMode"
           @pop="(data) => handleBubblePop(data)"
           @expired="(id) => handleExpiredBubble(id)"
       />
+
+      <div v-for="shot in shots"
+           :key="shot.id"
+           class="auto-shot"
+           :style="{ left: shot.x + 'px', top: shot.y + 'px' }">
+      </div>
+
+      <div v-for="text in scoreCoefficients"
+           :key="text.id"
+           class="coefficients-text"
+           :class="'coefficients-text--' + text.type"
+           :style="{ left: text.x + 'px', top: text.y + 'px' }">
+        x{{ text.value.toFixed(1) }}
+      </div>
 
     </main>
   </div>
@@ -39,6 +88,7 @@
 
 <script>
 import Bubble from "@/components/ui/Bubble.vue"
+import {mapActions, mapGetters} from "vuex"
 
 export default {
   name: "BubbleGame",
@@ -77,30 +127,48 @@ export default {
         default: '#7cafe3'
       },
       sizes: ['small', 'medium', 'big'],
+      scoreCoefficients: [],
+      isBombMode: false,
+      isLaserMode: false,
+      isAutoMode: false,
+      shots: [],
     };
   },
   computed: {
-    activeBubbles() {
-      return this.$store.getters.getBubbles
-    },
-    score() {
-      return this.$store.getters.getScore
-    },
+    ...mapGetters({
+      activeBubbles: 'getBubbles',
+      score: 'getScore',
+      missMultiplier: 'getMissMultiplier',
+      hitMultiplier: 'getHitMultiplier',
+      bombsCount: 'getBombs',
+      hitStreak: 'getHitStreak'
+    }),
     interval() {
       return 1000 / this.intensity
-    }
+    },
   },
   methods: {
+    ...mapActions([
+        'setMultipliers',
+        'addBubble',
+        'clearBubbles',
+        'removeBubble',
+        'setScore',
+        'updateScore',
+        'processScore',
+        'useBomb'
+    ]),
     initGame() {
       this.stopSpawning()
-      this.$store.dispatch('setScore', 0)
-      this.$store.dispatch('clearBubbles')
-      this.addBubble()
+      this.setMultipliers()
+      this.setScore(0)
+      this.clearBubbles()
+      this.spawnBubble()
       this.startSpawning()
     },
     startSpawning() {
       this.spawnTimer = setInterval(() => {
-        this.addBubble()
+        this.spawnBubble()
       }, this.interval)
     },
     stopSpawning() {
@@ -109,7 +177,7 @@ export default {
         this.spawnTimer = null
       }
     },
-    addBubble() {
+    spawnBubble() {
       const colors = Object.keys(this.colorMap)
       const fieldWidth = window.innerWidth
 
@@ -123,10 +191,10 @@ export default {
         initialY: -75,
       }
 
-      this.$store.dispatch('addBubble', newBubble)
+      this.addBubble(newBubble)
     },
     checkScore() {
-      if (this.score >= 50 || this.score <= -50) {
+      if (this.score >= 1000 || this.score <= -1000) {
         this.stopSpawning()
         this.$emit('finish', this.score)
       }
@@ -134,30 +202,29 @@ export default {
     restartGame() {
       this.initGame()
     },
-    processScore(bubbleColor, bubbleSize) {
-      let pointsToAdd = 0
+    handleBubblePop(data) {
+      const {id, x, y, size, color} = data
 
-      if (bubbleColor === this.colorMap[this.selectColor]) {
-        pointsToAdd = this.points
-      } else {
-        if (bubbleSize === 'big') {
-          pointsToAdd = -this.fine
-        } else if (bubbleSize === 'medium') {
-          pointsToAdd = -(this.fine - 2)
-        } else {
-          pointsToAdd = -(this.fine - 4)
-        }
+      const targetColor = this.colorMap[this.selectColor] || this.colorMap.default
+      const isCorrect = color === targetColor
+
+      const scorePayload = {
+        isCorrect: isCorrect,
+        size: size,
+        basePoints: this.points,
+        baseFine: this.fine
       }
 
-      this.$store.dispatch('updateScore', pointsToAdd)
-    },
-    handleBubblePop(data) {
-      const { id, x, y, size, color } = data
+      this.processScore(scorePayload).then(result => {
+        this.showCoefficientsText(x, y, result.newMultiplier, result.type)
+      })
+
+      const parentColorKey = Object.keys(this.colorMap).find(key => this.colorMap[key] === data.color)
 
       if (size === 'big') {
-        this.spawnSplits(color, 3, 'medium', x, y)
+        this.spawnSplits(parentColorKey, 3, 'medium', x, y)
       } else if (size === 'medium') {
-        this.spawnSplits(color, 5, 'small', x, y)
+        this.spawnSplits(parentColorKey, 5, 'small', x, y)
       }
 
       if (this.$refs.bubble) {
@@ -167,9 +234,15 @@ export default {
           }
         })
       }
-      this.processScore(color, size)
-      this.$store.dispatch('removeBubble', id)
+      this.removeBubble(id)
       this.checkScore()
+    },
+    showCoefficientsText(x, y, value, type) {
+      const id = Date.now() + Math.random()
+      this.scoreCoefficients.push({id, x, y, value, type})
+      setTimeout(() => {
+        this.scoreCoefficients = this.scoreCoefficients.filter(t => t.id !== id)
+      }, 1000)
     },
     handleExpiredBubble(bubbleId) {
       const id = this.activeBubbles.findIndex(b => b.bubbleId === bubbleId)
@@ -185,10 +258,10 @@ export default {
         } else {
           penalty = -(this.fine - 2)
         }
-        this.$store.dispatch('updateScore', penalty)
+        this.updateScore(penalty)
         this.checkScore()
       }
-      this.$store.dispatch('removeBubble', bubbleId)
+      this.removeBubble(bubbleId)
     },
     spawnSplits(parentColor, count, newSize, currentX, currentY) {
       const colors = Object.keys(this.colorMap)
@@ -199,11 +272,11 @@ export default {
         const offsetX = Math.cos(angle) * radius
         const offsetY = Math.sin(angle) * radius
 
-        const color = (i === 0) ? this.colorMap[parentColor] : colors[Math.floor(Math.random() * colors.length)]
+        const colorKey = (i === 0) ? parentColor : colors[Math.floor(Math.random() * colors.length)]
 
         const newBubble = {
           bubbleId: Date.now() + Math.random(),
-          color: color,
+          color: colorKey,
           size: newSize,
           amplitude: 15,
           offset: Math.random() * 100,
@@ -211,7 +284,103 @@ export default {
           initialY: currentY + offsetY,
         }
 
-        this.$store.dispatch('addBubble', newBubble)
+        this.addBubble(newBubble)
+      }
+    },
+    handleFieldClick(event) {
+      if (!this.isBombMode && !this.isAutoMode) return
+
+      const field = this.$el.querySelector('.bubble-game__field')
+      const rect = field.getBoundingClientRect()
+      const clickX = event.clientX - rect.left
+      const clickY = event.clientY - rect.top
+
+      if (this.isBombMode) {
+        if (this.bombsCount > 0) {
+          this.triggerExplosion(clickX, clickY)
+          this.useBomb()
+        }
+        this.isBombMode = false
+      }
+      else if (this.isAutoMode) {
+        this.placeAutoBullet(clickX, clickY)
+      }
+    },
+    triggerExplosion(x, y) {
+      const currentBubbles = [...this.getBubbles]
+
+      currentBubbles.forEach(b => {
+        const bubbleComponent = this.$refs.bubble?.find(cmp => cmp.bubbleId === b.bubbleId)
+        if (!bubbleComponent) return
+
+        const currentX = bubbleComponent.x
+        const currentY = bubbleComponent.y
+
+        const dx = currentX - x
+        const dy = currentY - y
+        const distance = Math.sqrt(dx * dx + dy * dy)
+
+        if (distance <= 250) {
+          this.removeBubble(b.bubbleId)
+
+          if (b.size === 'big') {
+            this.spawnSplits(b.color, 7, 'small', currentX, currentY)
+          }
+        }
+      })
+    },
+    resetAllModes() {
+      this.isBombMode = false
+      this.isLaserMode = false
+      this.isAutoMode = false
+    },
+    toggleBombMode() {
+      const wasActive = this.isBombMode
+      this.resetAllModes()
+      this.isBombMode = !wasActive
+    },
+    toggleLaserMode() {
+      const wasActive = this.isLaserMode
+      this.resetAllModes()
+      this.isLaserMode = !wasActive
+    },
+    toggleAutoMode() {
+      const wasActive = this.isAutoMode
+      this.resetAllModes()
+      this.isAutoMode = !wasActive
+    },
+    placeAutoBullet(x, y) {
+      const shotId = Date.now()
+      this.shots.push({ id: shotId, x, y })
+
+      let shotsFired = 0
+
+      const turretInterval = setInterval(() => {
+        this.fire(x, y)
+        shotsFired++
+
+        if (shotsFired >= 4) {
+          clearInterval(turretInterval)
+          this.shots = this.shots.filter(s => s.id !== shotId)
+        }
+      }, 500)
+    },
+    fire(x, y) {
+      const target = this.$refs.bubble?.find(cmp => {
+        const radius = cmp.size === 'big' ? 37.5 : cmp.size === 'medium' ? 20 : 12.5
+
+        const centerX = cmp.x + radius
+        const centerY = cmp.y + radius
+
+        const dx = centerX - x
+        const dy = centerY - y
+        const distance = Math.sqrt(dx * dx + dy * dy)
+
+        return distance <= radius
+      })
+
+      if (target) {
+        target.handleMouseDown()
       }
     },
   },
@@ -251,24 +420,117 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px;
+  padding: 10px 20px;
   background-color: #f8f9fa;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  font-size: 20px;
 
   &__score {
     display: flex;
     align-items: center;
-    gap: 20px;
-    font-size: 20px;
+    gap: 30px;
     color: #0879ea;
+  }
+
+  &__group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
 
   &__color {
     display: inline-block;
-    vertical-align: middle;
     border-radius: 50%;
     width: 20px;
     height: 20px;
   }
+
+  &__multipliers {
+    display: flex;
+    gap: 15px;
+
+    &--hit {
+      color: #4caf50;
+    }
+
+    &--miss {
+      color: #f44336;
+    }
+  }
+
+  &__bombs {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #000000;
+  }
+
+  &__btn {
+    padding: 4px 12px;
+    border: 1px solid #0879ea;
+    color: #0879ea;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+    cursor: pointer;
+    font-size: 20px;
+
+    &:disabled {
+      cursor: not-allowed;
+      border-color: #a5a5a5;
+      color: #a5a5a5;
+    }
+
+    &--active {
+      box-shadow: 0 0 8px #f44336;
+    }
+  }
 }
+
+.coefficients-text {
+  position: absolute;
+  font-size: 20px;
+  pointer-events: none;
+  z-index: 100;
+
+  &--hit {
+    color: #4caf50;
+  }
+
+  &--miss {
+    color: #f44336;
+  }
+}
+
+.auto-shot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background-color: #ff9800;
+  border: 1px solid #e65100;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 50;
+
+  transform: translate(-50%, -50%);
+  animation: pulseShot 0.5s infinite;
+}
+
+@keyframes pulseShot {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+    box-shadow: 0 0 10px #ff9800;
+  }
+  50% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+    box-shadow: none;
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+    box-shadow: 0 0 10px #ff9800;
+  }
+}
+
 </style>

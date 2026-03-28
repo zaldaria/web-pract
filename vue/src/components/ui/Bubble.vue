@@ -3,7 +3,8 @@
        class="bubble"
        :class="'bubble--' + size"
        :style="{ '--bubble-color': color }"
-       @mousedown.stop="() => handleMouseDown()">
+       @mousedown.stop="() => handleMouseDown()"
+       @mouseenter="() => handleMouseEnter()">
     <div class="bubble__highlight"></div>
   </div>
 </template>
@@ -50,6 +51,10 @@ export default {
       type: Number,
       default: 0
     },
+    isLaserMode: {
+      type: Boolean,
+      default: false
+    }
   },
   methods: {
     handleMouseDown() {
@@ -109,6 +114,11 @@ export default {
       this.x += shiftX
       this.y += shiftY
     },
+    handleMouseEnter() {
+      if (this.isLaserMode) {
+        this.handleMouseDown()
+      }
+    }
   },
   mounted() {
     this.$refs.bubble.style.transform = `translate(${this.initialX}px, ${this.initialY}px)`
