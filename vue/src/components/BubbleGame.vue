@@ -135,35 +135,17 @@ export default {
     };
   },
   computed: {
-    ...mapGetters([
-        'getBubbles',
-        'getScore',
-        'getMissMultiplier',
-        'getHitMultiplier',
-        'getBombs',
-        'getHitStreak'
-    ]),
-    activeBubbles() {
-      return this.getBubbles
-    },
-    score() {
-      return this.getScore
-    },
+    ...mapGetters({
+      activeBubbles: 'getBubbles',
+      score: 'getScore',
+      missMultiplier: 'getMissMultiplier',
+      hitMultiplier: 'getHitMultiplier',
+      bombsCount: 'getBombs',
+      hitStreak: 'getHitStreak'
+    }),
     interval() {
       return 1000 / this.intensity
     },
-    hitMultiplier() {
-      return this.getHitMultiplier
-    },
-    missMultiplier() {
-      return this.getMissMultiplier
-    },
-    bombsCount() {
-      return this.getBombs
-    },
-    hitStreak() {
-      return this.getHitStreak
-    }
   },
   methods: {
     ...mapActions([
